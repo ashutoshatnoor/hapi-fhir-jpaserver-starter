@@ -22,13 +22,17 @@ jobs:
           
       - name: Build and package
         run: sudo mkdir -p /root/.m2/repository/
-
+        
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
       - name: Build and package
         run: |
-          sudo cp -R libs /root/.m2/repository/
-          sudo cp -R pom.xml /tmp/hapi-fhir-jpaserver-starter
-          sudo cp -R server.xml /tmp/hapi-fhir-jpaserver-starter
-          sudo mvn  -T 12 -f pom.xml clean install -DskipTests -Djdk.lang.Process.launchMechanism=vfork -Dmaven.artifact.threads=30
+          sudo cp -R submodules/hapi-fhir-jpaserver-starter/libs /root/.m2/repository/
+          sudo cp -R submodules/hapi-fhir-jpaserver-starter/pom.xml /tmp/hapi-fhir-jpaserver-starter
+          sudo cp -R submodules/hapi-fhir-jpaserver-starter/server.xml /tmp/hapi-fhir-jpaserver-starter
+          sudo mvn  -T 12 -f submodules/hapi-fhir-jpaserver-starter/pom.xml clean install -DskipTests -Djdk.lang.Process.launchMechanism=vfork -Dmaven.artifact.threads=30
           sudo mvn package spring-boot:repackage -Pboot
           sudo mkdir /app && cp /tmp/hapi-fhir-jpaserver-starter/target/ROOT.war /app/main.war
 
