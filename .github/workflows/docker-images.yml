@@ -1,0 +1,91 @@
+name: Build HAPI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-hapi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          
+      - name: Build and package
+        run: sudo mkdir -p /root/.m2/repository/
+
+      - name: Build and package
+        run: |
+          sudo cp -R libs /root/.m2/repository/
+          sudo cp -R pom.xml /tmp/hapi-fhir-jpaserver-starter
+          sudo cp -R server.xml /tmp/hapi-fhir-jpaserver-starter
+          sudo mvn  -T 12 -f pom.xml clean install -DskipTests -Djdk.lang.Process.launchMechanism=vfork -Dmaven.artifact.threads=30
+          sudo mvn package spring-boot:repackage -Pboot
+          sudo mkdir /app && cp /tmp/hapi-fhir-jpaserver-starter/target/ROOT.war /app/main.war
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: hapi-fhir-jpaserver-starter
+          path: /app/main.war
+
+  build-tomcat:
+    runs-on: ubuntu-latest
+
+    needs: [build-hapi]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Tomcat
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tomcat9
+
+      - name: Copy configuration files
+        run: |
+          sudo rm -rf /opt/bitnami/tomcat9/webapps/ROOT
+          sudo rm -rf /opt/bitnami/tomcat9/webapps_default/ROOT
+          sudo mkdir -p /opt/bitnami/hapi/data/hapi/lucenefiles
+          sudo chmod 775 /opt/bitnami/hapi/data/hapi/lucenefiles
+          sudo mkdir -p /target && chown -R 1001:1001 target
+          sudo cp --chown=1001:1001 catalina.properties /opt/bitnami/tomcat/conf/catalina.properties
+          sudo cp --chown=1001:1001 server.xml /opt/bitnami/tomcat/conf/server.xml
+          sudo cp --from=build-hapi --chown=1001:1001 /tmp/hapi-fhir-jpaserver-starter/target/ROOT.war /opt/bitnami/tomcat/webapps_default/ROOT.war
+
+      - name: Start Tomcat
+        run: sudo systemctl start tomcat9
+
+  build-default:
+    runs-on: ubuntu-latest
+
+    needs: [build-tomcat]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Distroless Java 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+
+      - name: Copy application files
+        run: |
+          sudo cp --chown=nonroot:nonroot --from=build-distroless /app /app
+          sudo cp --chown=65532:65532 images /app/images
+      - name: Upload WAR file artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: war-file
+          path: /app/main.war
